@@ -11,6 +11,8 @@ constraintlayout = "2.1.4"
 shadowhook = "1.0.10"
 syshook = "1.4-SNAPSHOT"
 
+maven-public = "0.34.0"
+
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -27,3 +29,4 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-public" }

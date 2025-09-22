@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    `maven-publish`
+    alias(libs.plugins.maven.publish)
 }
 
 android {
@@ -59,29 +59,71 @@ dependencies {
     implementation(libs.shadowhook)
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("release") {
-            groupId = "com.github.HuolalaTech"
-            artifactId = "hll-sys-hook-android"
-            version = "1.4-SNAPSHOT"
+//publishing {
+//    publications {
+//        create<MavenPublication>("release") {
+//            groupId = "com.github.HuolalaTech"
+//            artifactId = "hll-sys-hook-android"
+//            version = "1.4-SNAPSHOT"
+//
+//            afterEvaluate {
+//                val pubComponent = components.findByName("release")
+//                if (pubComponent != null) {
+//                    from(pubComponent)
+//                }
+//            }
+//        }
+//    }
+//
+//    repositories {
+//        maven {
+//            name = "jitpack"
+//            url = uri("https://jitpack.io")
+//        }
+//    }
+//}
 
-            afterEvaluate {
-                val pubComponent = components.findByName("release")
-                if (pubComponent != null) {
-                    from(pubComponent)
-                }
+
+mavenPublishing {
+
+    publishToMavenCentral(true)
+    signAllPublications()
+
+    coordinates("io.github.korilin", "hll-sys-hook-android","1.4-KORILIN-V15FIX-1")
+
+    pom {
+        name = "HuoLaLa unify hook lib"
+        description = "Fix some system bugs to enhance app stability."
+        url = "https://github.com/korilin/hll-sys-hook-android"
+        licenses {
+            license {
+                name = "The Apache Software License, Version 2.0"
+                url = "https://github.com/korilin/hll-sys-hook-android/blob/main/LICENSE.txt"
+            }
+        }
+        scm {
+            url = "https://github.com/korilin/hll-sys-hook-android"
+            connection = "scm:git:git://github.com/korilin/hll-sys-hook-android.git"
+            developerConnection = "scm:git:ssh://git@github.com/korilin/hll-sys-hook-android.git"
+        }
+        developers {
+            developer {
+                id = "HuolalaTech"
+                name = "HuolalaTech"
+                email = ""
+                url = "https://github.com/HuolalaTech"
+            }
+
+            developer {
+                id = "korilin"
+                name = "Kori"
+                email = "korilin.dev@gmail.com"
+                url = "https://github.com/korilin"
             }
         }
     }
-
-    repositories {
-        maven {
-            name = "jitpack"
-            url = uri("https://jitpack.io")
-        }
-    }
 }
+
 
 tasks.named("publishToMavenLocal") {
     dependsOn("assembleRelease")
