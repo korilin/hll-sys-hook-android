@@ -89,7 +89,7 @@ mavenPublishing {
     publishToMavenCentral(true)
     signAllPublications()
 
-    coordinates("io.github.korilin", "hll-sys-hook-android","1.4-KORILIN-V15FIX-1")
+    coordinates("io.github.korilin", "hll-sys-hook-android","1.4-KORILIN-V15FIX-2")
 
     pom {
         name = "HuoLaLa unify hook lib"
