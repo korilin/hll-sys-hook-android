@@ -13,13 +13,18 @@
 
 #define TARGET_BASE_LIB_64 "/apex/com.android.art/lib64/libbase.so"
 #define TARGET_BASE_LIB_32 "/apex/com.android.art/lib/libbase.so"
+#define TARGET_ART_LIB_64 "/apex/com.android.art/lib64/libart.so"
+#define TARGET_ART_LIB_32 "/apex/com.android.art/lib/libart.so"
 #define SYMBOL_HOOK_POINT_STRING_PRINTF "_ZN7android4base12StringPrintfEPKcz"
+#define SYMBOL_THREAD_ABORT_IN_THIS "_ZN3art6Thread11AbortInThisERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE"
 #define LOG_TAG "suspend_thread_safe_v15"
 
 #if defined(__aarch64__) || defined(__x86_64__) || defined(__mips64)
 const char *libName = TARGET_BASE_LIB_64;
+const char *artLibName = TARGET_ART_LIB_64;
 #else
 const char* libName = TARGET_BASE_LIB_32;
+const char* artLibName = TARGET_ART_LIB_32;
 #endif
 
 namespace suspend_thread_safe_v15 {
@@ -27,8 +32,11 @@ namespace suspend_thread_safe_v15 {
         jobject callbackObj = nullptr;
         void *stubFunction = nullptr;
         void *originalFunction = nullptr;
+        void *abortInThisStubFunction = nullptr;
+        void *abortInThisOriginalFunction = nullptr;
 
         typedef std::string (*StringPrintf_t)(const char *format, ...);
+        typedef void (*AbortInThis_t)(void *self, const std::string &msg);
 
         bool checkFormat(const char *format) {
             return
@@ -41,6 +49,17 @@ namespace suspend_thread_safe_v15 {
                     strstr(format, "nsusps") != nullptr &&
                     strstr(format, "ncheckpts") != nullptr &&
                     strstr(format, "thread_info") != nullptr;
+        }
+
+        bool checkSuspendAllErrorMessage(const std::string &msg) {
+            // 检测 SuspendAll 相关的错误消息模式
+            return msg.find("suspend all") != std::string::npos ||
+                   msg.find("SuspendAll") != std::string::npos ||
+                   msg.find("ThreadList::SuspendAll") != std::string::npos ||
+                   (msg.find("timed out") != std::string::npos && 
+                    msg.find("barrier") != std::string::npos) ||
+                   msg.find("Suspend1Barrier") != std::string::npos ||
+                   msg.find("suspend1_barrier") != std::string::npos;
         }
 
         void triggerSuspendTimeout(double withConsumedTime) {
@@ -93,6 +112,20 @@ namespace suspend_thread_safe_v15 {
             }
             pEnv->CallVoidMethod(callbackObj, jMethodId, withConsumedTime);
             cleanup();
+        }
+
+        void proxyAbortInThisFunc(void *self, const std::string &msg) {
+            __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "AbortInThis intercepted: %s", msg.c_str());
+            
+            if (checkSuspendAllErrorMessage(msg)) {
+                __android_log_print(ANDROID_LOG_WARN, LOG_TAG, "SuspendAll timeout detected, preventing crash: %s", msg.c_str());
+                triggerSuspendTimeout(0.0);
+                // 不调用原始函数，避免崩溃
+                return;
+            }
+            
+            // 对于其他错误消息，仍然调用原始函数
+            ((AbortInThis_t) abortInThisOriginalFunction)(self, msg);
         }
 
         std::string proxyStringPrintfFunc(const char *format, ...) {
@@ -174,24 +207,54 @@ namespace suspend_thread_safe_v15 {
         }
 
         void initHookPoint() {
+            // 清理之前的 hook
             if (stubFunction != nullptr) {
                 shadowhook_unhook(stubFunction);
                 stubFunction = nullptr;
             }
+            if (abortInThisStubFunction != nullptr) {
+                shadowhook_unhook(abortInThisStubFunction);
+                abortInThisStubFunction = nullptr;
+            }
+            
+            // Hook StringPrintf for existing thread suspend timeout logic
             stubFunction = shadowhook_hook_sym_name(libName,
                                                     SYMBOL_HOOK_POINT_STRING_PRINTF,
                                                     (void *) proxyStringPrintfFunc,
                                                     (void **) &originalFunction);
-            if (stubFunction == nullptr) {
+            
+            // Hook AbortInThis for SuspendAll timeout logic
+            abortInThisStubFunction = shadowhook_hook_sym_name(artLibName,
+                                                              SYMBOL_THREAD_ABORT_IN_THIS,
+                                                              (void *) proxyAbortInThisFunc,
+                                                              (void **) &abortInThisOriginalFunction);
+            
+            bool stringPrintfSuccess = (stubFunction != nullptr);
+            bool abortInThisSuccess = (abortInThisStubFunction != nullptr);
+            
+            if (!stringPrintfSuccess) {
                 const int err_num = shadowhook_get_errno();
                 const char *errMsg = shadowhook_to_errmsg(err_num);
-                if (errMsg == nullptr) {
-                    return;
+                if (errMsg != nullptr) {
+                    __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "StringPrintf Hook setup failed: %s", errMsg);
                 }
-                __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "Hook setup failed: %s", errMsg);
-                hookPointFailed(errMsg);
+            }
+            
+            if (!abortInThisSuccess) {
+                const int err_num = shadowhook_get_errno();
+                const char *errMsg = shadowhook_to_errmsg(err_num);
+                if (errMsg != nullptr) {
+                    __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "AbortInThis Hook setup failed: %s", errMsg);
+                }
+            }
+            
+            if (stringPrintfSuccess || abortInThisSuccess) {
+                __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "Hook setup success - StringPrintf: %s, AbortInThis: %s", 
+                                  stringPrintfSuccess ? "YES" : "NO", 
+                                  abortInThisSuccess ? "YES" : "NO");
             } else {
-                __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "Hook setup success");
+                __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "All hooks failed");
+                hookPointFailed("Both StringPrintf and AbortInThis hooks failed");
             }
         }
     }
