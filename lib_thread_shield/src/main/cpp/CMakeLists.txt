@@ -44,4 +44,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         android
         log
         shadowhook::shadowhook
+        "-Wl,-z,max-page-size=16384"
 )
